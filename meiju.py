@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding:utf-8 -*-
-import os, random, queue, requests, threading
+import os, random, queue, requests, threading, time
 from bs4 import BeautifulSoup
 from faker import Factory
 
 fake = Factory.create()
 main_site = 'http://www.meijutt.com/content/meiju%s.html'
+
 
 headers = {
 	'Connection': 'keep-alive',
@@ -14,7 +15,7 @@ headers = {
 
 def fix_character(s):
 	for i in ['<', '>', ':', '"', '/', '\\\\', '|', '?', '*']:
-		s = s.replace(s, '')
+		s = s.replace(i, '')
 	return s
 
 class MainSpider(threading.Thread):
@@ -33,6 +34,8 @@ class MainSpider(threading.Thread):
 		print('\ncrawl end \n\n')
 
 	def spider(self, vol):
+
+		queueLock = threading.Lock()
 		url = main_site %(vol)
 		print('*' * 60)
 		print('crawling:' + url)
@@ -54,10 +57,12 @@ class MainSpider(threading.Thread):
 			down_list = soup.find('div', attrs={'class': 'down_list'})				                                #获取下载列表
 			episode_names = down_list.find_all('a')									                #获得每集下载链接和名称
 			episode_count = len(episode_names)											#获得总的下载链接数
+			#print('episode_count:' + str(episode_count))
 			episode = []
 			for str in episode_names:
 				_name = fix_character(str.text)
 				episode.append({'name:':_name})
+				print(_name)
 			episode_down_list = []
 			i = 0				
 			while i <episode_count:				
@@ -79,11 +84,35 @@ class MainSpider(threading.Thread):
 				'episode': episode,                                                     #获取下载列表
 				'episode_down_list': episode_down_list                                  #获得每集下载链接
 			}
-	
+			queueLock.acquire()
 			self.queue.put(phases)
+			queueLock.release()
 
+class Link(threading.Thread):
+	def __init__(self, dist, queue=None):
+		threading.Thread.__init__(self)
+		self.dist = dist
+		self.queue = queue
+
+	def run(self):
+		while True:
+			if self.queue.qsize() <= 0:
+				pass
+			else:
+				phases = self.queue.get()
+				self.printLink(phases)
+			
+	def printLink(self, phases):
+		for i in phases['episode']:
+			print('剧集:%s' %(i))
+                
+        
 if __name__ == '__main__':
 	spider_queue = queue.Queue()
 	test = MainSpider(main_site, vols=['1', '20', '40', '77', '88', '100'], queue=spider_queue)
 	test.setDaemon(True)
 	test.start()
+	time.sleep(20)
+	test2 = Link('d:/spider', queue = spider_queue)
+	test2.setDaemon(True)
+	test2.start()
